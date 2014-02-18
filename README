@@ -59,8 +59,11 @@ All commands default to the entire buffer if the [range] is omitted.
                         must not refer to the buffer (e.g. /\%l) and must
                         not use /\zs or /\ze for this to work. You can
                         refer to the match via s/\& and submatches (s/\1).
-                        match is put on a new line. The matches are simply
-                        concatenated without a newline character.
+                        The matches are simply concatenated without a newline
+                        character here. Append \n at {replacement} to have
+                        one. When {replacement} is "&...", ... is assumed to
+                        be a (literal) separator and is removed from the last
+                        element; if you don't want that, use \0 instead of &.
                         With [!]: Yank only the first match in each line.
 
 :[range]YankUniqueMatchesToReg[!] /{pattern}/[x]
@@ -71,6 +74,23 @@ All commands default to the entire buffer if the [range] is omitted.
                         put on a new line. With [!]: Yank only the first match
                         in each line.
 :[range]YankUniqueMatchesToReg[!] /{pattern}/{replacement}/[x]
+
+:[range]SubstituteAndYank /{pattern}/{replacement}/[flags]/{yank-replacement}/[x]
+                        Replace all matches of {pattern} in [range] / the
+                        buffer with {replacement}, like with :substitute
+                        (using [flags] as :s_flags), and put the
+                        {yank-replacement} (simply concatenated without a
+                        newline) into register [x] (or the unnamed register).
+                        Supports the same replacements as :YankMatchesToReg;
+                        additionally,  \# is replaced with a (1-based) count
+                        of the current yank and in a sub-replace-expression,
+                        v:key stands for the 0-based index.
+
+:[range]SubstituteAndYankUnique /{pattern}/{replacement}/[flags]/{yank-replacement}/[x]
+                        Like :SubstituteAndYank, but only add unique matches
+                        to the register. For non-unique matches, \# and v:key
+                        refer to the corresponding existing match in the
+                        register.
 
 :[line]PutMatches[!] /{pattern}/
 :[line]PutMatches[!] [{pattern}]
