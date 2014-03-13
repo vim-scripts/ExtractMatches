@@ -18,6 +18,26 @@
 " Maintainer:	Ingo Karkat <ingo@karkat.de>
 "
 " REVISION	DATE		REMARKS
+"   1.30.022	13-Mar-2014	When no replacement has been specified, yank the
+"				original matches with trailing newlines.
+"				Extract s:JoinMatches().
+"				Implement :PrintMatches command.
+"   1.30.021	12-Mar-2014	FIX: Inline pasting (with replacements) is
+"				broken due to wrong quoting.
+"				FIX: Inline pasting (with replacements) doesn't
+"				use the specified line and doesn't create a new
+"				empty line. In fact, the entire conditional in
+"				ExtractMatches#YankAndPaste() isn't necessary.
+"				FIX: Typo in variable name prevented elimination
+"				of \ze.
+"				FIX: Remove escaping of a:replacement to apply
+"				the DWIM trailing separator removal also to \\,
+"				\n, \t etc.
+"				Handle \r, \n, \t, \b in replacement, too.
+"				Rename :YankMatchesToReg[Unique] to
+"				:YankMatches[Unique], also for
+"				ExtractMatches#YankMatchesToReg().
+"   1.21.020	10-Mar-2014	Minor refactoring.
 "   1.20.019	20-Feb-2014	Add missing escaping of replacement parts in
 "				:SubstituteAndYank; as this is done by
 "				expressions, the separator character must be
@@ -78,8 +98,10 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
+let s:writableRegisterExpr = '\s*\([-a-zA-Z0-9"*+_/]\)\?'
+
 function! ExtractMatches#GrepToReg( firstLine, lastLine, arguments, isNonMatchingLines )
-    let [l:pattern, l:register] = ingo#cmdargs#pattern#Unescape(ingo#cmdargs#pattern#Parse(a:arguments, '\s*\([-a-zA-Z0-9"*+_/]\)\?'))
+    let [l:pattern, l:register] = ingo#cmdargs#pattern#Unescape(ingo#cmdargs#pattern#Parse(a:arguments, s:writableRegisterExpr))
     let l:register = (empty(l:register) ? '"' : l:register)
 
     let l:save_view = winsaveview()
@@ -136,7 +158,7 @@ function! s:SpecialReplacement( pattern, replacement )
 	" Note: This simplistic rule won't correctly handle the atoms inside
 	" branches.
 	let l:replacePattern = substitute(l:replacePattern, '^.\{-}\%(\%(^\|[^\\]\)\%(\\\\\)*\\\)\@<!\\zs', '', '')
-	let l:replacepattern = substitute(l:replacePattern, '\%(\%(^\|[^\\]\)\%(\\\\\)*\\\)\@<!\\ze.\{-}$', '', '')
+	let l:replacePattern = substitute(l:replacePattern, '\%(\%(^\|[^\\]\)\%(\\\\\)*\\\)\@<!\\ze.\{-}$', '', '')
 
 	" Also remove any location-aware atoms; it's not guaranteed that this
 	" give the expected result, but it's better than disallowing a match in
@@ -148,15 +170,39 @@ function! s:SpecialReplacement( pattern, replacement )
 	return a:replacement
     endif
 endfunction
-let s:registerExpr = '\s*\([-a-zA-Z0-9"*+_/]\)\?'
-function! ExtractMatches#YankMatchesToReg( firstLine, lastLine, arguments, isOnlyFirstMatch, isUnique )
-    let [l:separator, l:pattern, l:replacement, l:register] = ingo#cmdargs#substitute#Parse(a:arguments, {
-    \   'flagsExpr': s:registerExpr, 'emptyReplacement': '', 'emptyFlags': ''
+function! ExtractMatches#PrintMatches( firstLine, lastLine, arguments, isOnlyFirstMatch, isUnique )
+    let [l:separator, l:pattern, l:replacement] = ingo#cmdargs#substitute#Parse(a:arguments, {
+    \   'flagsExpr': '', 'emptyReplacement': '', 'emptyFlags': ''
     \})
-    if empty(l:register) && l:replacement =~# '^' . s:registerExpr . '$'
+    let l:pattern = ingo#cmdargs#pattern#Unescape([l:separator, l:pattern])
+    let l:replacement = ingo#cmdargs#pattern#Unescape([l:separator, l:replacement])
+"****D echomsg '****' string(l:pattern) string(l:replacement)
+
+    let l:matches = ingo#text#frompattern#Get(a:firstLine, a:lastLine,
+    \   l:pattern, s:SpecialReplacement(l:pattern, l:replacement),
+    \   a:isOnlyFirstMatch, a:isUnique
+    \)
+
+    if len(l:matches) == 0
+	call ingo#err#Set('E486: Pattern not found: ' . l:pattern)
+	return 0
+    else
+	if empty(l:replacement)
+	    echo join(l:matches, "\n")
+	else
+	    echo s:JoinMatches(l:matches, l:replacement)
+	endif
+	return 1
+    endif
+endfunction
+function! ExtractMatches#YankMatches( firstLine, lastLine, arguments, isOnlyFirstMatch, isUnique )
+    let [l:separator, l:pattern, l:replacement, l:register] = ingo#cmdargs#substitute#Parse(a:arguments, {
+    \   'flagsExpr': s:writableRegisterExpr, 'emptyReplacement': '', 'emptyFlags': ''
+    \})
+    if empty(l:register) && l:replacement =~# '^' . s:writableRegisterExpr . '$'
 	" In this command, {replacement} can be omitted; the following is then
 	" taken as the register.
-	let l:register = matchlist(l:replacement, '\C^' . s:registerExpr . '$')[1]
+	let l:register = matchlist(l:replacement, '\C^' . s:writableRegisterExpr . '$')[1]
 	let l:replacement = ''
     endif
     let l:register = (empty(l:register) ? '"' : l:register)
@@ -183,19 +229,24 @@ function! s:PutMatchesToRegister( matches, replacement, register )
 	let l:lines = join(a:matches, "\n")
 	call setreg(a:register, l:lines, 'V')
     else
-	let l:lines = join(a:matches, '')
-	if a:replacement =~# '^&.'
-	    " DWIM: When {replacement} is "&...", assume ... is a (literal)
-	    " separator and remove it from the last element
-	    let l:lines = substitute(l:lines, '\V\C' . escape(a:replacement[1:], '\') . '\$', '', '')
-	endif
-	call setreg(a:register, l:lines)
+	call setreg(a:register, s:JoinMatches(a:matches, a:replacement))
     endif
+endfunction
+function! s:JoinMatches( matches, replacement )
+    let l:lines = join(a:matches, '')
+    if a:replacement =~# '^&.'
+	" DWIM: When {replacement} is "&...", assume ... is a (literal)
+	" separator and remove it from the last element
+	" Note: By not escaping a:replacement, this handles things like \\,
+	" \n, \t etc., but isn't completely correct.
+	let l:lines = substitute(l:lines, '\V\C' . a:replacement[1:] . '\$', '', '')
+    endif
+    return l:lines
 endfunction
 
 function! ExtractMatches#SubstituteAndYank( firstLine, lastLine, arguments, isUnique )
     let [l:separator, s:pattern, l:replacement, l:register] = ingo#cmdargs#substitute#Parse(a:arguments, {
-    \   'flagsExpr': s:registerExpr, 'emptyReplacement': '', 'emptyFlags': ''
+    \   'flagsExpr': s:writableRegisterExpr, 'emptyReplacement': '', 'emptyFlags': ''
     \})
 "****D echomsg '****' string([l:separator, s:pattern, l:replacement, l:register])
     if l:register ==# l:separator
@@ -270,13 +321,17 @@ function! s:Collect( accumulatorMatches, accumulatorReplacements, isUnique )
 	" Handle sub-replace-special.
 	return eval(s:ExpandIndexInExpr(s:substReplacement[2:], l:idx))
     else
-	" Handle & and \0, \1 .. \9 (but not \u, \U, \n, etc.)
-	return PatternsOnText#ReplaceSpecial('', s:ExpandIndexInRepl(s:substReplacement, l:idx), '\%(&\|\\[0-9]\)', function('PatternsOnText#Selected#ReplaceSpecial'))
+	" Handle & and \0, \1 .. \9, and \r\n\t\b (but not \u, \U, etc.)
+	return PatternsOnText#ReplaceSpecial('', s:ExpandIndexInRepl(s:substReplacement, l:idx), '\%(&\|\\[0-9rnbt]\)', function('PatternsOnText#Selected#ReplaceSpecial'))
     endif
 endfunction
 function! s:ReplaceYank( match, idx )
     if empty(s:yankReplacement)
-	return ''
+	" When no replacement has been specified, yank the original matches with
+	" trailing newlines. This is consistent with :YankMatches/{pat}//, and
+	" better than simply returning nothing here, which would yank N-1
+	" newlines.
+	return a:match
     elseif s:yankReplacement =~# '^\\='
 	return eval(s:ExpandIndexInExpr(s:yankReplacement[2:], a:idx))
     else
@@ -292,17 +347,13 @@ endfunction
 function! ExtractMatches#PutMatches( lnum, arguments, isOnlyFirstMatch, isUnique )
     call ingo#register#KeepRegisterExecuteOrFunc(
     \   function('ExtractMatches#YankAndPaste'),
-    \   'Yank' . (a:isUnique ? 'Unique' : '') . 'MatchesToReg' . (a:isOnlyFirstMatch ? '!' : '') . ' ' . a:arguments,
+    \   'Yank' . (a:isUnique ? 'Unique' : '') . 'Matches' . (a:isOnlyFirstMatch ? '!' : '') . ' ' . a:arguments,
     \   a:lnum
     \)
 endfunction
 function! ExtractMatches#YankAndPaste( yankCommand, lnum )
     execute a:yankCommand
-    if getregtype('"') ==# 'V'
-	execute a:lnum . 'put'
-    else
-	execute 'normal! a\<C-r>\<C-o>"\<Esc>'
-    endif
+    execute a:lnum . 'put'
 endfunction
 
 let &cpo = s:save_cpo

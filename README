@@ -45,19 +45,17 @@ All commands default to the entire buffer if the [range] is omitted.
                         last search pattern if omitted), with !: do not match,
                         into register [x] (or the unnamed register).
 
-:[range]YankMatchesToReg[!] /{pattern}/[x]
-:[range]YankMatchesToReg[!] [{pattern}]
+:[range]YankMatches[!] /{pattern}/[x]
+:[range]YankMatches[!] [{pattern}]
                         Yank text matching {pattern} (or the last search
                         pattern if omitted) in [range] into register [x] (or
                         the unnamed register). Each match is put on a new
                         line. This works like "grep -o". With [!]: Yank only
                         the first match in each line.
-:[range]YankMatchesToReg[!] /{pattern}/{replacement}/[x]
+:[range]YankMatches[!] /{pattern}/{replacement}/[x]
                         Grab text matching {pattern} (or the last search
                         pattern if omitted) in [range], and put {replacement}
-                        into register [x] (or the unnamed register). {pattern}
-                        must not refer to the buffer (e.g. /\%l) and must
-                        not use /\zs or /\ze for this to work. You can
+                        into register [x] (or the unnamed register). You can
                         refer to the match via s/\& and submatches (s/\1).
                         The matches are simply concatenated without a newline
                         character here. Append \n at {replacement} to have
@@ -66,22 +64,37 @@ All commands default to the entire buffer if the [range] is omitted.
                         element; if you don't want that, use \0 instead of &.
                         With [!]: Yank only the first match in each line.
 
-:[range]YankUniqueMatchesToReg[!] /{pattern}/[x]
-:[range]YankUniqueMatchesToReg[!] [{pattern}]
+:[range]YankUniqueMatches[!] /{pattern}/[x]
+:[range]YankUniqueMatches[!] [{pattern}]
                         Yank text matching {pattern} (or the last search
                         pattern if omitted) in [range] into register [x] (or
                         the unnamed register), but only once. Each match is
                         put on a new line. With [!]: Yank only the first match
                         in each line.
-:[range]YankUniqueMatchesToReg[!] /{pattern}/{replacement}/[x]
+:[range]YankUniqueMatches[!] /{pattern}/{replacement}/[x]
+
+:[range]PrintMatches[!] /{pattern}/
+:[range]PrintMatches[!] [{pattern}]
+                        Print text matching {pattern} (or the last search
+                        pattern if omitted) in [range]. Each match is printed
+                        on a new line. This works like "grep -o". With [!]:
+                        Print only the first match in each line.
+:[range]PrintMatches[!] /{pattern}/{replacement}/
+                        Like :YankMatches, but print the replacement instead
+                        of yanking.
+:[range]PrintUniqueMatches[!] /{pattern}/
+:[range]PrintUniqueMatches[!] [{pattern}]
+:[range]PrintUniqueMatches[!] /{pattern}/{replacement}/
+                        Like :YankUniqueMatches, but print instead of
+                        yanking.
 
 :[range]SubstituteAndYank /{pattern}/{replacement}/[flags]/{yank-replacement}/[x]
-                        Replace all matches of {pattern} in [range] / the
-                        buffer with {replacement}, like with :substitute
+                        Replace all matches of {pattern} in the current line /
+                        [range] with {replacement}, like with :substitute
                         (using [flags] as :s_flags), and put the
                         {yank-replacement} (simply concatenated without a
                         newline) into register [x] (or the unnamed register).
-                        Supports the same replacements as :YankMatchesToReg;
+                        Supports the same replacements as :YankMatches;
                         additionally,  \# is replaced with a (1-based) count
                         of the current yank and in a sub-replace-expression,
                         v:key stands for the 0-based index.
@@ -98,10 +111,10 @@ All commands default to the entire buffer if the [range] is omitted.
                         Put text matching {pattern} (or the last search pattern
                         if omitted) after [line] (default current line). Each
                         match is put on a new line (except when {replacement}
-                        is specified; see :YankMatchesToReg). This works
-                        like "grep -o".
+                        is specified; see :YankMatches). This works like
+                        "grep -o".
                         With [!]: Put only the first match in each line.
-                        Cp. :YankMatchesToReg.
+                        Cp. :YankMatches.
 
 :[line]PutUniqueMatches[!] /{pattern}/
 :[line]PutUniqueMatches[!] [{pattern}]
@@ -110,4 +123,4 @@ All commands default to the entire buffer if the [range] is omitted.
                         if omitted) after [line] (default current line). Each
                         match is once put on a new line.
                         With [!]: Put only the first match in each line.
-                        Cp. :YankUniqueMatchesToReg.
+                        Cp. :YankUniqueMatches.
